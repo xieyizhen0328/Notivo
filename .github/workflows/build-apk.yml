@@ -3,7 +3,7 @@ name: Build APK
 on:
   push:
     branches: [main, master]
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   build:
@@ -25,14 +25,19 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          packages: 'platforms;android-35 build-tools;35.0.0'
+
+      - name: Install SDK Platform 35
+        run: |
+          yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-35" "build-tools;35.0.0" --sdk_root=${ANDROID_SDK_ROOT}
 
       - name: Install npm dependencies
         run: npm ci
 
       - name: Sync Capacitor assets
         run: npx cap sync android
+
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
 
       - name: Build debug APK
         working-directory: android
@@ -43,3 +48,4 @@ jobs:
         with:
           name: notivo-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: warn
