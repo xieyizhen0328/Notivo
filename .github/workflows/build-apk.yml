@@ -22,9 +22,8 @@ jobs:
 
       - name: Setup Android SDK
         run: |
-          ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --list 2>/dev/null | grep "platforms;android-3" | tail -10 || true
           yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-35" "build-tools;35.0.0" 2>&1 || true
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo "SDK setup done"
 
       - run: npm ci
 
@@ -34,7 +33,7 @@ jobs:
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon --info 2>&1 | tail -100
 
       - uses: actions/upload-artifact@v4
         with:
