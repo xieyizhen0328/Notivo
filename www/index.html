@@ -1,0 +1,2596 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#4F46E5">
+<link rel="manifest" href="/manifest.json">
+<title>Notivo — 智能会议纪要</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7.8.5/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/markmap-view@0.16.0/dist/browser/index.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/markmap-toolbar@0.16.0/dist/style.css">
+<style>
+/* ===== CSS Variables ===== */
+:root {
+  --primary: #4F46E5;
+  --primary-light: #EEF2FF;
+  --primary-dark: #3730A3;
+  --bg: #F9FAFB;
+  --card: #FFFFFF;
+  --text: #111827;
+  --text-secondary: #6B7280;
+  --border: #E5E7EB;
+  --danger: #EF4444;
+  --success: #10B981;
+  --warning: #F59E0B;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+  --shadow-md: 0 4px 6px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.06);
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+/* ===== Reset ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font);
+  background: #E5E7EB;
+  display: flex; justify-content: center; align-items: center;
+  min-height: 100vh; color: var(--text);
+  -webkit-tap-highlight-color: transparent;
+}
+button { cursor: pointer; font-family: inherit; border: none; background: none; }
+input, textarea, select { font-family: inherit; font-size: inherit; }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 2px; }
+
+/* ===== Phone Frame (Desktop) ===== */
+.phone-frame {
+  width: 430px; max-width: 100vw; height: 92vh; max-height: 900px;
+  background: var(--bg); border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.15), 0 0 0 2px #1f1f1f;
+  display: flex; flex-direction: column; overflow: hidden;
+  position: relative;
+}
+@media (max-width: 440px) {
+  .phone-frame { width: 100%; height: 100vh; max-height: 100vh; border-radius: 0; box-shadow: none; }
+}
+
+/* ===== Status Bar ===== */
+.status-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 24px; font-size: 11px; font-weight: 600; color: var(--text);
+  background: var(--card); border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* ===== Header ===== */
+.app-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; flex-shrink: 0; background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+.app-logo { font-size: 20px; font-weight: 800; color: var(--primary); letter-spacing: -.5px; }
+.app-logo span { color: var(--text-secondary); font-weight: 400; font-size: 13px; margin-left: 4px; }
+
+/* ===== Main Content Area ===== */
+.main-content { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; }
+
+.page { display: none; padding: 16px 20px 100px; animation: fadeIn .2s ease; }
+.page.active { display: block; }
+#page-minutes { display: none; flex-direction: column; padding: 0; height: 100%; }
+#page-minutes.active { display: flex; }
+#page-minutes .helper-note { margin: 8px 12px; flex-shrink: 0; }
+#page-minutes .chat-panel { padding: 8px 12px 0; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ===== Bottom Nav ===== */
+.bottom-nav {
+  display: flex; justify-content: space-around; align-items: center;
+  padding: 8px 0 20px; background: var(--card); border-top: 1px solid var(--border);
+  flex-shrink: 0; position: relative; z-index: 10;
+}
+.nav-item {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  font-size: 10px; color: var(--text-secondary); padding: 4px 16px;
+  border-radius: 20px; transition: all .15s;
+}
+.nav-item .icon { font-size: 22px; line-height: 1; }
+.nav-item.active { color: var(--primary); font-weight: 600; }
+.nav-item:active { background: var(--primary-light); }
+
+/* ===== Upload Zone ===== */
+.upload-zone {
+  border: 2px dashed var(--border); border-radius: var(--radius);
+  padding: 32px 20px; text-align: center; transition: all .2s;
+  background: var(--card); cursor: pointer; margin-bottom: 16px;
+}
+.upload-zone.drag-over { border-color: var(--primary); background: var(--primary-light); }
+.upload-zone .icon { font-size: 40px; margin-bottom: 8px; display: block; }
+.upload-zone .hint { font-size: 13px; color: var(--text-secondary); }
+.upload-zone .formats { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+
+/* ===== File List ===== */
+.file-list { display: flex; flex-direction: column; gap: 8px; }
+.file-card {
+  display: flex; align-items: center; gap: 12px; padding: 12px;
+  background: var(--card); border-radius: var(--radius-sm);
+  box-shadow: var(--shadow); transition: all .15s;
+}
+.file-card:hover { box-shadow: var(--shadow-md); }
+.file-card.selected { border: 2px solid var(--primary); background: var(--primary-light); }
+.file-icon { font-size: 28px; flex-shrink: 0; }
+.file-info { flex: 1; min-width: 0; }
+.file-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-meta { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+.file-delete {
+  width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  color: var(--text-secondary); font-size: 16px; flex-shrink: 0; transition: all .15s;
+}
+.file-delete:hover { background: #FEE2E2; color: var(--danger); }
+.empty-state { text-align: center; padding: 40px 20px; color: var(--text-secondary); }
+.empty-state .icon { font-size: 48px; display: block; margin-bottom: 8px; }
+
+/* ===== Template Cards ===== */
+.section-title { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
+.template-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+.template-card {
+  padding: 12px; border-radius: var(--radius-sm); background: var(--card);
+  border: 1.5px solid var(--border); cursor: pointer; transition: all .15s;
+}
+.template-card:hover { border-color: var(--primary); box-shadow: var(--shadow-md); }
+.template-card.selected { border-color: var(--primary); background: var(--primary-light); }
+.template-card .t-icon { font-size: 24px; margin-bottom: 4px; }
+.template-card .t-name { font-size: 13px; font-weight: 700; }
+.template-card .t-desc { font-size: 11px; color: var(--text-secondary); margin-top: 2px; line-height: 1.4; }
+
+/* ===== Chat Panel ===== */
+.chat-panel { display: flex; flex-direction: column; flex: 1; min-height: 200px; overflow: hidden; }
+.chat-messages {
+  flex: 1; overflow-y: auto; padding: 8px 0; display: flex; flex-direction: column; gap: 8px;
+}
+.chat-msg {
+  max-width: 85%; padding: 10px 14px; border-radius: 16px; font-size: 13px; line-height: 1.6;
+  word-break: break-word;
+}
+.chat-msg.user { align-self: flex-end; background: var(--primary); color: #fff; border-bottom-right-radius: 4px; }
+.chat-msg.ai { align-self: flex-start; background: var(--card); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+.chat-msg.ai.streaming { border-color: var(--primary); }
+.chat-input-row { display: flex; gap: 8px; margin-top: 8px; }
+.chat-input {
+  flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: 20px;
+  font-size: 13px; outline: none; resize: none; transition: border .15s;
+}
+.chat-input:focus { border-color: var(--primary); }
+.btn-send {
+  width: 40px; height: 40px; border-radius: 50%; background: var(--primary); color: #fff;
+  font-size: 18px; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; transition: all .15s;
+}
+.btn-send:disabled { opacity: .4; }
+.btn-send:not(:disabled):active { transform: scale(.9); }
+
+/* ===== Preview ===== */
+.preview-panel {
+  background: var(--card); border-radius: var(--radius); padding: 16px;
+  box-shadow: var(--shadow); margin-top: 12px; min-height: 200px;
+  font-size: 14px; line-height: 1.7; word-break: break-word;
+}
+.preview-panel h1 { font-size: 1.4em; margin: .6em 0 .3em; }
+.preview-panel h2 { font-size: 1.2em; margin: .5em 0 .2em; color: var(--primary-dark); }
+.preview-panel h3 { font-size: 1.05em; margin: .4em 0 .15em; }
+.preview-panel ul, .preview-panel ol { padding-left: 1.5em; margin: .3em 0; }
+.preview-panel li { margin: .15em 0; }
+.preview-panel code { background: #F3F4F6; padding: 2px 6px; border-radius: 3px; font-size: .9em; }
+.preview-panel pre { background: #1F2937; color: #E5E7EB; padding: 12px; border-radius: var(--radius-sm); overflow-x: auto; }
+.preview-panel pre code { background: none; padding: 0; color: inherit; }
+.preview-panel blockquote { border-left: 3px solid var(--primary); padding: 4px 0 4px 12px; color: var(--text-secondary); margin: .5em 0; }
+.preview-panel table { border-collapse: collapse; width: 100%; margin: .5em 0; }
+.preview-panel th, .preview-panel td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; font-size: .9em; }
+.preview-panel th { background: var(--primary-light); }
+
+.preview-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+
+/* ===== Buttons ===== */
+.btn {
+  padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 6px; transition: all .15s;
+}
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-outline { border: 1.5px solid var(--border); color: var(--text); }
+.btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+.btn-sm { padding: 5px 12px; font-size: 11px; border-radius: 14px; }
+.btn-danger { color: var(--danger); }
+.btn-danger:hover { background: #FEE2E2; }
+
+/* ===== Mind Map ===== */
+.mindmap-container { width: 100%; height: 50vh; border-radius: var(--radius); overflow: hidden; }
+.mindmap-container svg { width: 100%; height: 100%; }
+
+/* ===== Settings ===== */
+.setting-group { margin-bottom: 20px; }
+.setting-label { font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+.setting-input, .setting-select {
+  width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 14px; outline: none; background: var(--card); transition: border .15s;
+}
+.setting-input:focus, .setting-select:focus { border-color: var(--primary); }
+.setting-hint { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+.api-status { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.api-status.ok { background: var(--success); }
+.api-status.unknown { background: var(--border); }
+
+/* ===== Toast ===== */
+.toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.toast {
+  padding: 10px 20px; border-radius: 20px; font-size: 13px; font-weight: 600;
+  color: #fff; animation: slideDown .25s ease; pointer-events: auto;
+  max-width: 360px; text-align: center;
+}
+.toast.success { background: var(--success); }
+.toast.error { background: var(--danger); }
+.toast.info { background: var(--primary); }
+@keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ===== Processing Overlay ===== */
+.processing-bar {
+  display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+  background: var(--primary-light); border-radius: var(--radius-sm); margin: 8px 0;
+  font-size: 13px; color: var(--primary); font-weight: 600;
+}
+.spinner {
+  width: 18px; height: 18px; border: 2.5px solid var(--border); border-top-color: var(--primary);
+  border-radius: 50%; animation: spin .6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== No files helper ===== */
+.helper-note {
+  padding: 10px 14px; background: #FFFBEB; border: 1px solid #FDE68A;
+  border-radius: var(--radius-sm); font-size: 12px; color: #92400E; margin-bottom: 12px;
+}
+
+/* ===== Transcript Modal ===== */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 100;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.modal-sheet {
+  width: 100%; max-width: 430px; max-height: 80vh;
+  background: var(--card); border-radius: 16px 16px 0 0;
+  display: flex; flex-direction: column; overflow: hidden;
+  animation: slideUp .25s ease;
+}
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.modal-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+}
+.modal-title { font-size: 15px; font-weight: 700; }
+.modal-close {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; color: var(--text-secondary);
+}
+.modal-close:hover { background: #F3F4F6; }
+.modal-hint {
+  padding: 10px 20px; font-size: 12px; color: var(--text-secondary); line-height: 1.5;
+  background: #FFF7ED; border-bottom: 1px solid #FED7AA;
+}
+.modal-textarea {
+  flex: 1; min-height: 200px; padding: 14px 20px; border: none; outline: none;
+  font-size: 14px; line-height: 1.7; resize: none; font-family: inherit;
+}
+.modal-actions {
+  display: flex; gap: 8px; padding: 12px 20px 24px; border-top: 1px solid var(--border);
+}
+.modal-actions .btn { flex: 1; justify-content: center; border-radius: 12px; padding: 12px; }
+.transcript-badge {
+  display: inline-flex; align-items: center; gap: 3px; font-size: 10px;
+  padding: 2px 8px; border-radius: 10px; font-weight: 600;
+}
+.transcript-badge.has { background: #D1FAE5; color: #065F46; }
+.transcript-badge.none { background: #F3F4F6; color: #9CA3AF; }
+
+/* ===== Project Tags ===== */
+.project-bar { display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 12px; scrollbar-width: none; }
+.project-bar::-webkit-scrollbar { display: none; }
+.project-tag {
+  padding: 6px 14px; border-radius: 16px; font-size: 12px; font-weight: 600;
+  white-space: nowrap; cursor: pointer; border: 1.5px solid var(--border);
+  background: var(--card); color: var(--text-secondary); transition: all .15s;
+  flex-shrink: 0;
+}
+.project-tag.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.project-tag-add { border-style: dashed; color: var(--primary); font-size: 18px; padding: 4px 10px; }
+
+/* ===== History Cards ===== */
+.history-card {
+  padding: 14px; background: var(--card); border-radius: var(--radius-sm);
+  box-shadow: var(--shadow); cursor: pointer; transition: all .15s; margin-bottom: 8px;
+}
+.history-card:hover { box-shadow: var(--shadow-md); }
+.history-card .h-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+.history-card .h-preview { font-size: 12px; color: var(--text-secondary); line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.history-card .h-meta { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 11px; color: var(--text-secondary); }
+.history-tag { padding: 2px 8px; border-radius: 8px; font-size: 10px; font-weight: 600; }
+.history-tag.tpl { background: var(--primary-light); color: var(--primary); }
+
+/* ===== Todo ===== */
+.todo-section { margin-top: 16px; }
+.todo-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.todo-count { font-size: 12px; color: var(--text-secondary); }
+.todo-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  background: var(--card); border-radius: var(--radius-sm); margin-bottom: 6px;
+  box-shadow: var(--shadow); transition: all .15s; }
+.todo-item.done .todo-text { text-decoration: line-through; color: #9CA3AF; }
+.todo-check {
+  width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--border);
+  display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;
+  font-size: 12px; transition: all .15s;
+}
+.todo-check.done { background: var(--success); border-color: var(--success); color: #fff; }
+.todo-text { flex: 1; font-size: 13px; }
+.todo-add { display: flex; gap: 8px; margin-top: 8px; }
+.todo-add input { flex: 1; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; outline: none; }
+
+/* ===== Search ===== */
+.search-bar {
+  display: flex; gap: 8px; padding: 8px 0; margin-bottom: 8px;
+}
+.search-input {
+  flex: 1; padding: 8px 14px; border: 1px solid var(--border); border-radius: 20px;
+  font-size: 13px; outline: none; background: var(--card); transition: border .15s;
+}
+.search-input:focus { border-color: var(--primary); }
+
+/* ===== Sub-nav (History tab) ===== */
+.sub-nav { display: flex; gap: 4px; margin-bottom: 12px; background: #F3F4F6; border-radius: 10px; padding: 3px; }
+.sub-nav-btn {
+  flex: 1; padding: 7px 12px; border-radius: 8px; font-size: 12px; font-weight: 600;
+  color: var(--text-secondary); text-align: center; transition: all .15s;
+}
+.sub-nav-btn.active { background: var(--card); color: var(--text); box-shadow: var(--shadow); }
+
+/* ===== Minute Detail Modal ===== */
+.detail-modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 100;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.detail-sheet {
+  width: 100%; max-width: 430px; max-height: 90vh; background: var(--card);
+  border-radius: 16px 16px 0 0; display: flex; flex-direction: column;
+  overflow: hidden; animation: slideUp .25s ease;
+}
+.detail-content { flex: 1; overflow-y: auto; padding: 16px 20px; font-size: 14px; line-height: 1.7; }
+.detail-content h1 { font-size: 1.3em; margin: .5em 0 .3em; }
+.detail-content h2 { font-size: 1.1em; margin: .4em 0 .2em; color: var(--primary-dark); }
+.detail-content h3 { font-size: 1em; margin: .3em 0 .15em; }
+.detail-content ul, .detail-content ol { padding-left: 1.5em; margin: .3em 0; }
+.detail-content table { border-collapse: collapse; width: 100%; margin: .5em 0; font-size: .85em; }
+.detail-content th, .detail-content td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }
+.detail-content th { background: var(--primary-light); }
+.detail-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.detail-actions { display: flex; gap: 8px; padding: 12px 20px 24px; border-top: 1px solid var(--border); flex-shrink: 0; }
+.detail-actions .btn { flex: 1; justify-content: center; }
+
+/* ===== Project Edit Modal ===== */
+.project-edit-row { display: flex; gap: 8px; padding: 14px 20px; }
+.project-edit-row input {
+  flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px;
+  font-size: 14px; outline: none;
+}
+.project-color-dot {
+  width: 16px; height: 16px; border-radius: 50%; display: inline-block; margin-right: 6px;
+  flex-shrink: 0;
+}
+
+/* ===== Minutes tab: 3 selector pills (side-by-side) ===== */
+.selector-pills {
+  display: flex; gap: 8px; padding: 10px 16px; flex-shrink: 0;
+}
+.selector-pill {
+  flex: 1; display: flex; align-items: center; gap: 4px;
+  padding: 8px 6px; border-radius: 12px; cursor: pointer;
+  background: var(--card); border: 1.5px solid var(--border);
+  font-size: 12px; font-weight: 600; transition: all .15s;
+  white-space: nowrap; justify-content: center;
+}
+.selector-pill:active, .selector-pill.open { border-color: var(--primary); background: var(--primary-light); }
+.selector-pill .sp-icon { font-size: 15px; flex-shrink: 0; }
+.selector-pill .sp-text { overflow: hidden; text-overflow: ellipsis; }
+.selector-pill .sp-arrow { color: var(--text-secondary); font-size: 10px; transition: transform .2s; flex-shrink: 0; }
+.selector-pill .sp-arrow.open { transform: rotate(180deg); }
+
+/* Dropdown panel below pills */
+.selector-drop-panel {
+  display: none; padding: 8px 16px 12px; border-bottom: 1px solid var(--border);
+  background: #FAFAFA; max-height: 260px; overflow-y: auto; flex-shrink: 0;
+}
+.selector-drop-panel.open { display: block; }
+
+/* Model options in drop */
+.model-option {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500;
+  transition: background .1s;
+}
+.model-option:hover { background: #EEF2FF; }
+.model-option.selected { background: var(--primary-light); color: var(--primary); font-weight: 700; }
+.model-option .mo-check { width: 18px; font-size: 14px; color: var(--primary); }
+
+/* File options in drop */
+.file-option {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  border-radius: 8px; cursor: pointer; font-size: 13px; transition: background .1s;
+}
+.file-option:hover { background: #EEF2FF; }
+.file-option.selected { background: var(--primary-light); color: var(--primary); font-weight: 700; }
+.file-option .fo-icon { font-size: 20px; }
+.file-option .fo-info { flex: 1; min-width: 0; }
+.file-option .fo-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-option .fo-meta { font-size: 11px; color: var(--text-secondary); }
+.file-option .fo-check { color: var(--primary); font-weight: 700; }
+
+/* Template mini grid in drop */
+.template-mini-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.template-mini-card {
+  padding: 8px; border-radius: 8px; border: 1.5px solid var(--border);
+  cursor: pointer; font-size: 11px; transition: all .15s; background: var(--card);
+  text-align: center;
+}
+.template-mini-card:hover { border-color: var(--primary); }
+.template-mini-card.selected { border-color: var(--primary); background: var(--primary-light); }
+.template-mini-card .tm-icon { font-size: 18px; }
+.template-mini-card .tm-name { font-weight: 700; margin-top: 2px; }
+.template-mini-card .tm-desc { font-size: 10px; color: var(--text-secondary); margin-top: 1px; line-height: 1.3; }
+
+/* Input fixed at bottom */
+.minutes-input-row {
+  display: flex; gap: 8px; padding: 8px 12px 12px; flex-shrink: 0;
+  border-top: 1px solid var(--border); background: var(--card);
+}
+
+/* ===== 我 page ===== */
+.me-account-card {
+  display: flex; align-items: center; gap: 14px; padding: 20px;
+  background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%);
+  border-radius: var(--radius); color: #fff; margin: 12px 20px;
+}
+.me-avatar {
+  width: 52px; height: 52px; border-radius: 50%; background: rgba(255,255,255,.2);
+  display: flex; align-items: center; justify-content: center; font-size: 28px;
+}
+.me-account-info { flex: 1; }
+.me-account-name { font-size: 16px; font-weight: 700; }
+.me-account-hint { font-size: 12px; opacity: .8; margin-top: 2px; }
+.me-menu { margin: 0 20px; border-radius: var(--radius-sm); overflow: hidden; background: var(--card); box-shadow: var(--shadow); }
+.me-menu-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 16px; cursor: pointer; font-size: 14px; font-weight: 500;
+  transition: background .1s; border-bottom: 1px solid var(--border);
+}
+.me-menu-item:last-child { border-bottom: none; }
+.me-menu-item:active { background: #F9FAFB; }
+.me-arrow { color: #C7C7CC; font-size: 18px; }
+.me-back-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; border-bottom: 1px solid var(--border); margin-bottom: 8px;
+}
+
+/* Glossary */
+.glossary-word {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 6px 12px; background: var(--primary-light); color: var(--primary);
+  border-radius: 16px; font-size: 13px; font-weight: 600; margin: 0 6px 8px 0;
+}
+.glossary-word .gw-del {
+  cursor: pointer; font-size: 14px; opacity: .6; margin-left: 2px;
+}
+.glossary-word .gw-del:hover { opacity: 1; }
+.industry-tag {
+  padding: 10px 18px; border-radius: 12px; cursor: pointer; font-size: 14px; font-weight: 600;
+  background: var(--card); border: 2px solid var(--border); transition: all .15s; text-align: center;
+}
+.industry-tag:hover { border-color: var(--primary); }
+.industry-tag.selected { background: var(--primary); color: #fff; border-color: var(--primary); }
+</style>
+</head>
+<body>
+
+<div class="phone-frame" id="app">
+  <div class="status-bar">
+    <span>9:41</span>
+    <span>Notivo</span>
+    <span>🔋 85%</span>
+  </div>
+
+  <div class="app-header">
+    <div class="app-logo">Notivo<span>智能会议纪要</span></div>
+    <button class="btn btn-sm btn-outline" onclick="switchTab('me')">👤</button>
+  </div>
+
+  <div class="main-content" id="mainContent">
+
+    <!-- ===== Page 1: Files ===== -->
+    <div class="page active" id="page-files">
+      <div class="project-bar" id="projectBar"></div>
+      <div class="upload-zone" id="uploadZone">
+        <span class="icon">🎙️</span>
+        <div class="hint">点击上传或拖拽录音文件到此处</div>
+        <div class="formats">支持 MP3 / WAV / M4A / OGG · 小米用户：上传后点击 📝 粘贴已转文本</div>
+        <input type="file" id="fileInput" accept="audio/*" multiple hidden>
+      </div>
+      <div class="file-list" id="fileList"></div>
+      <div class="empty-state" id="emptyFiles">
+        <span class="icon">📂</span>
+        <p>还没有录音文件，上传一个开始吧</p>
+      </div>
+    </div>
+
+    <!-- ===== Page 2: History ===== -->
+    <div class="page" id="page-history">
+      <div class="sub-nav">
+        <button class="sub-nav-btn active" onclick="switchHistoryView('list')" id="subNavList">📋 纪要列表</button>
+        <button class="sub-nav-btn" onclick="switchHistoryView('todos')" id="subNavTodos">✅ 待办<span class="todo-count" id="todoBadge" style="margin-left:4px;"></span></button>
+      </div>
+      <div id="historyListView">
+        <div class="search-bar">
+          <input class="search-input" id="historySearch" placeholder="🔍 搜索纪要…" oninput="renderHistoryList()" />
+        </div>
+        <div class="history-list" id="historyList"></div>
+        <div class="empty-state" id="emptyHistory">
+          <span class="icon">📋</span><p>还没有生成过会议纪要</p>
+        </div>
+      </div>
+      <div id="todosView" style="display:none;">
+        <div class="todo-section" id="todoSection"></div>
+        <div class="todo-add">
+          <input id="todoAddInput" placeholder="添加待办事项…" onkeydown="if(event.key==='Enter')addTodo()" />
+          <button class="btn btn-sm btn-primary" onclick="addTodo()">+ 添加</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== Page 3: Minutes ===== -->
+    <div class="page" id="page-minutes">
+      <div class="helper-note" id="noFileWarning" style="display:none">
+        ⚠️ 请先在「文件」页上传并选中一个录音文件，再回来生成纪要
+      </div>
+
+      <!-- Chat area (main, tall) -->
+      <div class="chat-panel" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+        <div class="chat-messages" id="chatMessages" style="flex:1;">
+          <div class="empty-state" id="chatEmpty" style="padding:30px 20px;">
+            <span class="icon" style="font-size:36px;">✨</span>
+            <p>下方选择录音文件、模型和模板<br>输入指令或直接发送，AI 即刻生成纪要</p>
+          </div>
+        </div>
+
+        <div class="preview-panel" id="previewPanel" style="display:none;margin:0 8px 4px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <span style="font-weight:700;font-size:12px;">📄 预览</span>
+            <span style="font-size:11px;color:var(--text-secondary);" id="wordCount"></span>
+          </div>
+          <div id="previewContent" style="max-height:140px;overflow-y:auto;"></div>
+          <div class="preview-actions" style="margin-top:6px;">
+            <button class="btn btn-sm btn-outline" onclick="copyContent()">📋 复制</button>
+            <button class="btn btn-sm btn-outline" onclick="downloadMD()">📥 .md</button>
+            <button class="btn btn-sm btn-primary" onclick="showMindmap()">🧠 导图</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3 selector pills (above input) -->
+      <div class="selector-pills">
+        <div class="selector-pill" id="pillFile" onclick="toggleSelector('file')">
+          <span class="sp-icon">🎵</span>
+          <span class="sp-text" id="selectedFileName">录音文件</span>
+          <span class="sp-arrow" id="fileArrow">▾</span>
+        </div>
+        <div class="selector-pill" id="pillModel" onclick="toggleSelector('model')">
+          <span class="sp-icon">🧠</span>
+          <span class="sp-text" id="selectedModelName">Claude Sonnet 5</span>
+          <span class="sp-arrow" id="modelArrow">▾</span>
+        </div>
+        <div class="selector-pill" id="pillTemplate" onclick="toggleSelector('template')">
+          <span class="sp-icon">📋</span>
+          <span class="sp-text" id="selectedTemplateName">标准会议纪要</span>
+          <span class="sp-arrow" id="templateArrow">▾</span>
+        </div>
+      </div>
+      <div class="selector-drop-panel" id="fileDropdown"></div>
+      <div class="selector-drop-panel" id="modelDropdown"></div>
+      <div class="selector-drop-panel" id="templateDropdown"></div>
+
+      <!-- Input bar (fixed bottom) -->
+      <div class="minutes-input-row">
+        <input class="chat-input" id="chatInput" placeholder="输入指令或直接发送…" />
+        <button class="btn-send" id="btnSend" onclick="sendMessage()">➤</button>
+      </div>
+    </div>
+
+    <!-- ===== Page 3: Mind Map ===== -->
+    <div class="page" id="page-mindmap">
+      <div class="section-title">🧠 思维导图</div>
+      <div class="mindmap-container" id="mindmapWrapper">
+        <svg id="mindmapContainer" style="width:100%;height:100%;display:none;"></svg>
+        <div class="empty-state" id="emptyMindmap">
+          <span class="icon">🗺️</span>
+          <p>生成会议纪要后，点击「生成思维导图」即可查看</p>
+        </div>
+      </div>
+      <div id="mindmapActions" style="display:none;margin-top:12px;gap:8px;">
+        <button class="btn btn-sm btn-outline" onclick="exportMindmapSVG()">📥 导出 SVG</button>
+        <button class="btn btn-sm btn-outline" onclick="exportMindmapPNG()">🖼️ 导出 PNG</button>
+      </div>
+    </div>
+
+    <!-- ===== Page 5: 我 ===== -->
+    <div class="page" id="page-me">
+      <!-- Main view -->
+      <div id="meMainView">
+        <!-- Account card -->
+        <div class="me-account-card">
+          <div class="me-avatar">👤</div>
+          <div class="me-account-info">
+            <div class="me-account-name">未登录</div>
+            <div class="me-account-hint">登录后可同步数据到云端</div>
+          </div>
+          <button class="btn btn-sm btn-outline" style="border-radius:16px;">登录</button>
+        </div>
+
+        <!-- Menu list -->
+        <div class="section-title" style="margin-top:8px;">常用功能</div>
+        <div class="me-menu">
+          <div class="me-menu-item" onclick="showMeSub('glossary')">
+            <span>📝 语音词库</span><span class="me-arrow">›</span>
+          </div>
+          <div class="me-menu-item" onclick="showMeSub('api')">
+            <span>🎙️ API 与转录设置</span><span class="me-arrow">›</span>
+          </div>
+          <div class="me-menu-item" onclick="testConnection()">
+            <span>🔌 连接检测</span><span id="apiStatusText" style="font-size:11px;color:var(--text-secondary);">未检测</span>
+          </div>
+        </div>
+
+        <div style="padding:16px 20px;margin-top:16px;">
+          <p style="font-size:11px;color:var(--text-secondary);line-height:1.6;">
+            Notivo v0.2.0<br>后续计划：发卡平台 · 实时录音 · 多语言
+          </p>
+        </div>
+      </div>
+
+      <!-- Sub-view: API Settings -->
+      <div id="meApiView" style="display:none;">
+        <div class="me-back-row">
+          <button class="btn btn-sm btn-outline" onclick="showMeSub('main')" style="border-radius:16px;">← 返回</button>
+          <span style="font-weight:700;font-size:14px;">🎙️ API 与转录设置</span>
+          <span style="width:50px;"></span>
+        </div>
+        <div class="setting-group">
+          <div class="setting-label">AI 服务商</div>
+          <select class="setting-select" id="settingProvider" onchange="onProviderChange()">
+            <option value="anthropic">Anthropic (Claude)</option>
+            <option value="openai">OpenAI 兼容</option>
+          </select>
+        </div>
+        <div class="setting-group">
+          <div class="setting-label">后端地址</div>
+          <input class="setting-input" id="settingBackendUrl" placeholder="http://localhost:8000" onchange="saveSettings()" />
+          <div class="setting-hint">Notivo 后端服务器地址</div>
+        </div>
+        <div class="setting-group">
+          <div class="setting-label">API Key</div>
+          <input class="setting-input" type="password" id="settingApiKey" placeholder="sk-…" onchange="saveSettings()" />
+          <div class="setting-hint">Key 仅存储在浏览器和服务器本地</div>
+        </div>
+        <div class="setting-group" id="baseUrlGroup" style="display:none;">
+          <div class="setting-label">API Base URL</div>
+          <input class="setting-input" id="settingBaseUrl" placeholder="https://api.openai.com" onchange="saveSettings()" />
+        </div>
+        <div class="setting-group">
+          <div class="setting-label">模型</div>
+          <select class="setting-select" id="settingModel" onchange="saveSettings()"></select>
+        </div>
+        <div class="setting-group">
+          <div class="setting-label">Whisper API Key（语音转文字）</div>
+          <input class="setting-input" type="password" id="settingWhisperKey" placeholder="留空则使用上方 API Key" onchange="saveSettings()" />
+        </div>
+        <div class="setting-group">
+          <div class="setting-label">连接状态</div>
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 0;">
+            <span class="api-status unknown" id="apiStatusDot"></span>
+            <span id="apiStatusText2" style="font-size:13px;color:var(--text-secondary);">未检测</span>
+            <button class="btn btn-sm btn-outline" onclick="testConnection()">检测连接</button>
+            <button class="btn btn-sm btn-primary" onclick="syncConfigToServer()" style="margin-left:auto;">保存到服务器</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sub-view: Glossary -->
+      <div id="meGlossaryView" style="display:none;">
+        <div class="me-back-row">
+          <button class="btn btn-sm btn-outline" onclick="showMeSub('main')" style="border-radius:16px;">← 返回</button>
+          <span style="font-weight:700;font-size:14px;">📝 语音词库</span>
+          <span style="width:50px;"></span>
+        </div>
+        <div class="sub-nav" style="margin:0 16px 12px;">
+          <button class="sub-nav-btn active" onclick="switchGlossaryTab('my')" id="glossaryTabMy">我的词库</button>
+          <button class="sub-nav-btn" onclick="switchGlossaryTab('industry')" id="glossaryTabInd">行业偏好</button>
+        </div>
+
+        <!-- My Glossary -->
+        <div id="glossaryMyView">
+          <div class="setting-hint" style="padding:0 20px;margin-bottom:8px;">添加常用词汇和术语，AI 生成纪要时将优先匹配这些词汇</div>
+          <div class="todo-add" style="padding:0 20px;">
+            <input id="glossaryAddInput" placeholder="添加词汇…" onkeydown="if(event.key==='Enter')addGlossaryWord()" />
+            <button class="btn btn-sm btn-primary" onclick="addGlossaryWord()">+ 添加</button>
+          </div>
+          <div id="glossaryWordList" style="padding:8px 20px;"></div>
+        </div>
+
+        <!-- Industry Preference -->
+        <div id="glossaryIndustryView" style="display:none;">
+          <div class="setting-hint" style="padding:0 20px;margin-bottom:12px;">选择行业后，AI 将自动关联该行业的专业术语体系</div>
+          <div id="industryTags" style="padding:0 20px;display:flex;flex-wrap:wrap;gap:8px;"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom Nav -->
+  <div class="bottom-nav" id="bottomNav">
+    <button class="nav-item active" data-tab="files" onclick="switchTab('files')">
+      <span class="icon">📁</span>文件
+    </button>
+    <button class="nav-item" data-tab="history" onclick="switchTab('history')">
+      <span class="icon">📋</span>历史
+    </button>
+    <button class="nav-item" data-tab="minutes" onclick="switchTab('minutes')">
+      <span class="icon">✨</span>纪要
+    </button>
+    <button class="nav-item" data-tab="mindmap" onclick="switchTab('mindmap')">
+      <span class="icon">🧠</span>导图
+    </button>
+    <button class="nav-item" data-tab="me" onclick="switchTab('me')">
+      <span class="icon">👤</span>我
+    </button>
+  </div>
+</div>
+
+<!-- Minute Detail Modal -->
+<div class="detail-modal" id="detailModal" style="display:none;">
+  <div class="detail-sheet">
+    <div class="detail-header">
+      <span style="font-weight:700;font-size:14px;" id="detailTitle">纪要详情</span>
+      <button class="modal-close" onclick="closeDetailModal()">✕</button>
+    </div>
+    <div class="detail-content" id="detailContent"></div>
+    <div class="detail-actions">
+      <button class="btn btn-sm btn-outline" onclick="copyDetailContent()">📋 复制</button>
+      <button class="btn btn-sm btn-outline" id="detailMdBtn">📥 下载 .md</button>
+      <button class="btn btn-sm btn-outline" onclick="deleteDetailMinute()">🗑 删除</button>
+      <button class="btn btn-sm btn-primary" onclick="detailToMindmap()">🧠 导图</button>
+    </div>
+  </div>
+</div>
+
+<!-- Transcript Edit Modal -->
+<div class="modal-overlay" id="transcriptModal" style="display:none;">
+  <div class="modal-sheet">
+    <div class="modal-header">
+      <span class="modal-title">📝 小米录音机转写文本</span>
+      <button class="modal-close" onclick="closeTranscriptModal()">✕</button>
+    </div>
+    <div class="modal-hint">粘贴小米录音机 APP 已转好的文本，生成纪要时将直接使用此文本（跳过 Whisper 转录）。</div>
+    <textarea class="modal-textarea" id="transcriptTextarea" placeholder="在此粘贴录音转写文本…"></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeTranscriptModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveTranscript()">保存并关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ============================================================
+// Notivo — 智能会议纪要 前端原型
+// ============================================================
+
+// ===== API Config =====
+const API_BASE = (() => {
+  // Use localStorage backend_url if configured, otherwise default
+  try { return JSON.parse(localStorage.getItem('notivo_settings') || '{}').backendUrl || 'http://localhost:8000'; }
+  catch(e) { return 'http://localhost:8000'; }
+})();
+
+// ===== State =====
+const state = {
+  files: [],               // { id, name, size, duration, blob, addedAt, transcript, projectId }
+  projects: [],            // { id, name, color, createdAt }
+  minutes: [],             // { id, title, markdown, templateId, fileId, projectId, createdAt }
+  todos: [],               // { id, text, done, minuteId, createdAt }
+  selectedFileId: null,
+  selectedTemplate: null,
+  currentMarkdown: '',     // generated markdown content
+  currentMinuteId: null,   // most recently saved minute id
+  settings: {
+    provider: 'anthropic',
+    apiKey: '',
+    baseUrl: '',
+    model: '',
+    whisperKey: '',
+    backendUrl: 'http://localhost:8000',
+  },
+  activeTab: 'files',
+  historyView: 'list',     // 'list' | 'todos'
+  selectedProjectId: null, // null = show all
+  viewingMinuteId: null,
+  meSubView: 'main',       // 'main' | 'api' | 'glossary'
+  glossaryTab: 'my',       // 'my' | 'industry'
+  glossary: { words: [], industry: null }, // { words: string[], industry: string | null }
+};
+
+// ===== Templates =====
+const TEMPLATES = [
+  {
+    id: 'meeting',
+    icon: '📋', name: '标准会议纪要',
+    desc: '周会/月会/例会',
+    systemPrompt: '你是一位专业的会议记录员。请根据会议内容生成一份标准会议纪要。使用Markdown格式，结构清晰。',
+    prompt: `请根据以下会议内容，生成一份标准会议纪要，包含以下结构：
+
+## 会议基本信息
+- 会议主题、日期时间、地点、参会人员
+
+## 议题讨论
+- 逐一列出各议题的核心讨论内容和主要观点
+
+## 决议事项
+- 已达成共识的决策
+
+## 行动计划
+| 事项 | 负责人 | 截止时间 | 优先级 |
+|------|--------|----------|--------|
+
+## 下次会议安排
+- 时间和待讨论议题
+
+格式要求：Markdown，重点突出，可操作性强。`,
+  },
+  {
+    id: 'interview',
+    icon: '🎤', name: '访谈/调研记录',
+    desc: '用户访谈、需求调研',
+    systemPrompt: '你是一位资深用户研究员。请根据访谈录音内容生成结构化访谈记录。',
+    prompt: `请根据以下访谈内容，生成一份访谈调研记录：
+
+## 访谈背景
+- 访谈目的、对象背景、时间地点
+
+## 关键问答
+- 用 Q&A 格式梳理核心交流内容，保留重要原话
+
+## 核心发现
+- 提炼 3-5 个关键洞察
+
+## 用户痛点与需求
+- 梳理用户的真实痛点和背后的需求动机
+
+## 待跟进事项
+- 需要进一步确认或跟进的开放问题
+
+格式要求：Markdown，保留关键引用，观点客观中立。`,
+  },
+  {
+    id: 'lecture',
+    icon: '📖', name: '课堂/讲座笔记',
+    desc: '培训、网课、讲座',
+    systemPrompt: '你是一位专业的学习笔记整理师。请根据课程/讲座录音生成结构化学习笔记。',
+    prompt: `请根据以下课程内容，生成一份学习笔记：
+
+## 课程主题
+- 一句话总结核心主题
+
+## 知识框架
+- 用层级结构梳理知识点体系
+
+## 重点概念
+- 逐个解释关键概念，配合原文中的例子
+
+## 关键词索引
+- 列出 5-10 个关键词及简要释义
+
+## 个人思考题
+- 提出 3 个值得深入思考的问题
+
+格式要求：Markdown，便于复习，知识点清晰。`,
+  },
+  {
+    id: 'retrospective',
+    icon: '🔄', name: '项目复盘',
+    desc: '迭代回顾、里程碑复盘',
+    systemPrompt: '你是一位敏捷教练。请根据项目复盘讨论内容生成结构化复盘报告。',
+    prompt: `请根据以下项目复盘讨论，生成复盘报告：
+
+## 项目/迭代概况
+- 目标回顾、关键指标达成情况
+
+## 👍 亮点（Keep）
+- 做得好的地方，值得保持
+
+## 👎 不足（Problems）
+- 出现的问题和挑战
+
+## 🔍 根因分析
+- 对关键问题进行深层原因分析
+
+## 📝 改进措施
+| 问题 | 改进措施 | 负责人 | 时间节点 |
+|------|----------|--------|----------|
+
+## 💡 经验沉淀
+- 可复用的经验和教训
+
+格式要求：Markdown，实事求是，改进措施具体可落地。`,
+  },
+  {
+    id: 'client',
+    icon: '🤝', name: '客户沟通记录',
+    desc: '商务洽谈、客户拜访',
+    systemPrompt: '你是一位商务助理。请根据客户沟通内容生成规范化的沟通记录。',
+    prompt: `请根据以下客户沟通内容，生成沟通记录：
+
+## 沟通概要
+- 客户名称、沟通形式、日期、参与人
+
+## 客户需求梳理
+- 客户提出的核心需求和期望
+
+## 我方回应要点
+- 针对客户需求给出的回应和方案
+
+## 关键决策与共识
+- 双方达成的共识或重要决策点
+
+## 后续跟进计划
+| 事项 | 负责方 | 计划完成时间 | 备注 |
+|------|--------|-------------|------|
+
+## 风险与注意事项
+- 需要重点关注的风险点
+
+格式要求：Markdown，商务正式风格，便于内部同步。`,
+  },
+  {
+    id: 'brainstorm',
+    icon: '💡', name: '头脑风暴',
+    desc: '创意讨论、战略研讨',
+    systemPrompt: '你是一位创新引导师。请根据头脑风暴讨论内容归纳整理，并提炼核心方向。',
+    prompt: `请根据以下头脑风暴讨论，生成整理报告：
+
+## 讨论主题
+- 核心讨论的问题或目标
+
+## 观点聚类
+- 将所有观点按主题聚类，每个聚类下面列出具体观点
+
+## 🔥 核心方向
+- 提炼出 3-5 个最有价值的方向，每个方向说明理由和可行性
+
+## 下一步行动
+- 需要深入研究的方向和具体行动
+
+## 发散思考
+- 跳出讨论范围的有价值的延展思考
+
+格式要求：Markdown，鼓励创新视角，不遗漏边缘观点。`,
+  },
+  {
+    id: 'memo',
+    icon: '📝', name: '日常语音备忘',
+    desc: '个人速记、灵感记录',
+    systemPrompt: '你是一位个人效率助手。请根据语音备忘内容提取关键信息和待办事项。',
+    prompt: `请根据以下语音备忘，生成整理内容：
+
+## 📌 要点摘要
+- 3-5 句话概括备忘的核心内容
+
+## ✅ 待办提取
+- [ ] 从备忘中提取的所有待办事项
+
+## ⏰ 时间节点
+- 备忘中提到的日期、截止时间等时间信息
+
+## 🔗 关联事项
+- 与其他可能有关联的事项或项目
+
+## 💭 个人备注
+- 识别出的情绪、想法或额外需要记住的信息
+
+格式要求：Markdown，简洁实用，可直接作为待办清单使用。`,
+  },
+  {
+    id: 'medical',
+    icon: '🏥', name: '医生问诊记录',
+    desc: '医疗咨询、诊断对话',
+    systemPrompt: '你是一位医疗记录员。请根据问诊对话整理规范的问诊记录。注意：仅记录事实，不做医学判断。',
+    prompt: `请根据以下问诊内容，生成问诊记录：
+
+## 就诊基本信息
+- 患者主诉、就诊日期
+
+## 症状描述
+- 患者自述的症状和持续时间
+
+## 医生问询要点
+- 医生的关键提问和患者回复
+
+## 诊断意见
+- 医生的初步诊断或判断
+
+## 处置方案
+- 开具的检查、药物、治疗建议
+
+## 医嘱与随访
+- 注意事项、复诊安排
+
+格式要求：Markdown，客观记录，不添加额外医学建议。`,
+  },
+  {
+    id: 'legal',
+    icon: '⚖️', name: '法律咨询记录',
+    desc: '律师咨询、法务沟通',
+    systemPrompt: '你是一位法律事务记录员。请根据法律咨询对话整理咨询记录。注意：仅记录事实，不做法律判断。',
+    prompt: `请根据以下法律咨询内容，生成咨询记录：
+
+## 咨询概要
+- 咨询类型、当事人、咨询日期
+
+## 案情陈述
+- 当事人陈述的核心事实
+
+## 咨询问题
+- 当事人提出的具体法律问题
+
+## 律师意见
+- 律师给出的初步法律分析
+
+## 证据与材料
+- 提及的关键证据和需补充的材料
+
+## 后续建议
+- 建议的法律行动和注意事项
+
+格式要求：Markdown，条理清晰，保留关键法律术语。`,
+  },
+  {
+    id: 'sales',
+    icon: '💼', name: '销售跟进记录',
+    desc: '销售拜访、客户跟进',
+    systemPrompt: '你是一位销售助理。请根据销售沟通内容整理跟进记录。',
+    prompt: `请根据以下销售沟通内容，生成跟进记录：
+
+## 客户信息
+- 客户名称、联系人、行业
+
+## 沟通概要
+- 沟通形式和核心议题
+
+## 客户需求
+- 客户表达的明确需求和潜在需求
+
+## 我方方案
+- 介绍的产品/服务和客户反馈
+
+## 异议与应对
+| 客户异议 | 我方回应 | 后续需补充 |
+|----------|----------|------------|
+
+## 下一步计划
+- 约定事项、预计成交时间和金额
+
+格式要求：Markdown，重点突出商机和风险。`,
+  },
+  {
+    id: 'prd',
+    icon: '🔧', name: '产品评审会',
+    desc: 'PRD 评审、技术方案讨论',
+    systemPrompt: '你是一位技术产品记录员。请根据产品评审会议内容整理会议记录。',
+    prompt: `请根据以下产品评审会议内容，生成评审记录：
+
+## 评审对象
+- 产品/功能名称、版本、PRD 链接
+
+## 方案概述
+- 产品方案核心逻辑和关键设计决策
+
+## 评审意见
+| 评审人 | 意见类型 | 具体意见 | 优先级 |
+|--------|----------|----------|--------|
+
+## 技术关注点
+- 技术实现的风险和待确认点
+
+## 决议
+- 评审通过的模块、需修改的模块
+
+## 待办
+- 修改项、负责人、截止时间
+
+格式要求：Markdown，用表格汇总便于跟踪。`,
+  },
+  {
+    id: 'pitch',
+    icon: '🚀', name: '投资人路演',
+    desc: 'Pitch、融资路演',
+    systemPrompt: '你是一位投融资分析师。请根据路演对话整理路演反馈记录。',
+    prompt: `请根据以下路演内容，生成路演记录：
+
+## 项目概要
+- 项目名称、赛道、融资轮次和金额
+
+## 路演核心亮点
+- 团队展示的核心优势和差异化
+
+## 投资人提问
+| 投资人 | 问题 | 创始人回答 | 投资人反应 |
+|--------|------|------------|------------|
+
+## 关注点与顾虑
+- 投资人提出的核心关注点
+
+## 后续跟进
+- 需要补充的材料、下一步沟通安排
+
+## 整体评估
+- 投资人兴趣程度和跟进建议
+
+格式要求：Markdown，客观记录投资人的真实态度。`,
+  },
+  {
+    id: 'academic',
+    icon: '🎓', name: '学术研讨会',
+    desc: '学术讨论、论文研讨',
+    systemPrompt: '你是一位学术秘书。请根据学术研讨会内容整理研讨记录。',
+    prompt: `请根据以下学术研讨内容，生成研讨记录：
+
+## 研讨主题
+- 论文题目/研究方向、报告人
+
+## 核心论点
+- 报告的核心学术观点和创新点
+
+## 研究方法
+- 采用的研究方法和数据来源
+
+## 讨论要点
+| 提问者 | 问题/评论 | 回应 |
+|--------|-----------|------|
+
+## 启发与延伸
+- 研讨中产生的新思路和可延伸方向
+
+## 参考文献
+- 讨论中提及的关键文献
+
+格式要求：Markdown，学术规范，保留专业术语。`,
+  },
+  {
+    id: 'press',
+    icon: '📺', name: '新闻发布会',
+    desc: '媒体发布、记者问答',
+    systemPrompt: '你是一位公关记录员。请根据新闻发布会内容整理发布记录。',
+    prompt: `请根据以下新闻发布会内容，生成发布记录：
+
+## 发布概要
+- 发布主题、发言人、时间地点
+
+## 发布内容要点
+- 新闻发布的核心信息和关键数据
+
+## 记者问答
+| 媒体 | 提问 | 发言人回应 | 要点标记 |
+|------|------|------------|----------|
+
+## 舆论敏感点
+- 记者追问较多的话题和潜在风险点
+
+## 传播建议
+- 适合传播的核心信息和注意事项
+
+格式要求：Markdown，区分发布内容和问答环节。`,
+  },
+  {
+    id: 'summary',
+    icon: '📊', name: '工作总结',
+    desc: '个人/团队工作总结',
+    systemPrompt: '你是一位管理顾问。请根据工作总结讨论内容整理结构化总结。',
+    prompt: `请根据以下工作总结内容，生成总结报告：
+
+## 周期概述
+- 总结周期、关键指标完成情况
+
+## 主要成果
+- 按重要性排列的核心产出
+
+## 问题与挑战
+- 遇到的主要问题和应对措施
+
+## 数据复盘
+- 关键指标的变化趋势和分析
+
+## ⭐ 亮点自评
+- 超出预期的工作和值得推广的经验
+
+## 📝 改进计划
+| 改进方向 | 具体行动 | 预期效果 | 时间节点 |
+|----------|----------|----------|----------|
+
+## 下阶段规划
+- 下个周期的核心目标和关键任务
+
+格式要求：Markdown，数据驱动，结论先行。`,
+  },
+];
+
+// ===== Model Options =====
+const MODEL_OPTIONS = {
+  anthropic: [
+    { id: 'claude-sonnet-5', name: 'Claude Sonnet 5' },
+    { id: 'claude-opus-5', name: 'Claude Opus 5' },
+    { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5' },
+  ],
+  openai: [
+    { id: 'gpt-4o', name: 'GPT-4o' },
+    { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
+    { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
+  ],
+};
+
+// ===== Init =====
+function init() {
+  loadSettings();
+  loadGlossary();
+  loadProjects();
+  loadFiles();
+  loadMinutes();
+  loadTodos();
+  renderProjectBar();
+  renderTemplates();
+  renderModelSelector();
+  renderFileDropdown();
+  renderFileList();
+  renderHistoryList();
+  renderTodos();
+  updateTodoBadge();
+  setupUpload();
+  updateModelSelect();
+  setupChatInput();
+}
+
+function loadSettings() {
+  const saved = localStorage.getItem('notivo_settings');
+  if (saved) {
+    try { Object.assign(state.settings, JSON.parse(saved)); } catch(e) {}
+  }
+  document.getElementById('settingProvider').value = state.settings.provider;
+  document.getElementById('settingApiKey').value = state.settings.apiKey;
+  document.getElementById('settingBaseUrl').value = state.settings.baseUrl || '';
+  document.getElementById('settingWhisperKey').value = state.settings.whisperKey || '';
+  const be = document.getElementById('settingBackendUrl');
+  if (be) be.value = state.settings.backendUrl || 'http://localhost:8000';
+  onProviderChange();
+}
+
+function saveSettings() {
+  state.settings.provider = document.getElementById('settingProvider').value;
+  state.settings.apiKey = document.getElementById('settingApiKey').value.trim();
+  state.settings.baseUrl = document.getElementById('settingBaseUrl').value.trim();
+  state.settings.whisperKey = document.getElementById('settingWhisperKey').value.trim();
+  state.settings.model = document.getElementById('settingModel').value;
+  const be = document.getElementById('settingBackendUrl');
+  if (be) state.settings.backendUrl = be.value.trim();
+  localStorage.setItem('notivo_settings', JSON.stringify(state.settings));
+  updateModelSelect();
+}
+
+async function syncConfigToServer() {
+  saveSettings();
+  const s = state.settings;
+  try {
+    const resp = await fetch(`${API_BASE}/api/config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        provider: s.provider,
+        model: s.model,
+        api_key: s.apiKey,
+        base_url: s.baseUrl,
+        whisper_key: s.whisperKey,
+      }),
+    });
+    if (resp.ok) {
+      toast('配置已同步到服务器 ✅', 'success');
+    } else {
+      toast('同步失败，请确认后端已启动', 'error');
+    }
+  } catch(e) {
+    toast('无法连接后端: ' + e.message, 'error');
+  }
+}
+
+function onProviderChange() {
+  const p = document.getElementById('settingProvider').value;
+  document.getElementById('baseUrlGroup').style.display = p === 'openai' ? '' : 'none';
+  updateModelSelect();
+  saveSettings();
+}
+
+function updateModelSelect() {
+  const sel = document.getElementById('settingModel');
+  const opts = MODEL_OPTIONS[state.settings.provider] || MODEL_OPTIONS.anthropic;
+  sel.innerHTML = opts.map(m => `<option value="${m.id}">${m.name}</option>`).join('');
+  if (state.settings.model && opts.find(o => o.id === state.settings.model)) {
+    sel.value = state.settings.model;
+  } else {
+    sel.value = opts[0].id;
+    state.settings.model = opts[0].id;
+  }
+}
+
+// ===== File Management =====
+function setupUpload() {
+  const zone = document.getElementById('uploadZone');
+  const input = document.getElementById('fileInput');
+
+  zone.addEventListener('click', () => input.click());
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    handleFiles(e.dataTransfer.files);
+  });
+  input.addEventListener('change', () => handleFiles(input.files));
+}
+
+function getAudioDuration(fileObj) {
+  const url = URL.createObjectURL(fileObj.blob);
+  const audio = new Audio(url);
+  audio.addEventListener('loadedmetadata', () => {
+    fileObj.duration = audio.duration;
+    saveFiles();
+    renderFileList();
+    URL.revokeObjectURL(url);
+  });
+  audio.addEventListener('error', () => {
+    URL.revokeObjectURL(url);
+  });
+}
+
+function selectFile(id) {
+  state.selectedFileId = id;
+  state.currentMarkdown = '';
+  renderFileList();
+  renderFileDropdown();
+  updateFilePillDisplay();
+  resetChat();
+  document.getElementById('previewPanel').style.display = 'none';
+  document.getElementById('noFileWarning').style.display = 'none';
+}
+
+function deleteFile(id, e) {
+  e.stopPropagation();
+  state.files = state.files.filter(f => f.id !== id);
+  // Clean up associated minutes and todos
+  const orphanMinuteIds = state.minutes.filter(m => m.fileId === id).map(m => m.id);
+  state.minutes = state.minutes.filter(m => m.fileId !== id);
+  state.todos = state.todos.filter(t => !orphanMinuteIds.includes(t.minuteId));
+  if (state.selectedFileId === id) {
+    state.selectedFileId = null;
+    state.currentMarkdown = '';
+    resetChat();
+    document.getElementById('previewPanel').style.display = 'none';
+  }
+  saveFiles();
+  persistMinutes();
+  saveTodos();
+  renderFileList();
+  renderFileDropdown();
+  renderHistoryList();
+  updateTodoBadge();
+  toast('文件已删除', 'info');
+}
+
+function saveFiles() {
+  const meta = state.files.map(f => ({
+    id: f.id, name: f.name, size: f.size, duration: f.duration, addedAt: f.addedAt,
+    hasBlob: !!f.blob, projectId: f.projectId,
+    hasTranscript: !!(f.transcript && f.transcript.trim()),
+  }));
+  localStorage.setItem('notivo_files_meta', JSON.stringify(meta));
+  storeBlobs();
+}
+
+function loadFiles() {
+  const meta = localStorage.getItem('notivo_files_meta');
+  if (!meta) return;
+  try {
+    const items = JSON.parse(meta);
+    // Load blobs from IndexedDB
+    loadBlobs(items);
+  } catch(e) {}
+}
+
+// ponytail: simple IndexedDB wrapper, upgrade to Dexie if schema grows
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('notivo_files', 1);
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains('blobs')) {
+        req.result.createObjectStore('blobs');
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function storeBlobs() {
+  try {
+    const db = await openDB();
+    const tx = db.transaction('blobs', 'readwrite');
+    const store = tx.objectStore('blobs');
+    for (const f of state.files) {
+      store.put({ blob: f.blob || null, transcript: f.transcript || '' }, f.id);
+    }
+  } catch(e) { /* IndexedDB not available */ }
+}
+
+async function loadBlobs(items) {
+  try {
+    const db = await openDB();
+    const tx = db.transaction('blobs', 'readonly');
+    const store = tx.objectStore('blobs');
+    for (const item of items) {
+      const data = await new Promise(resolve => {
+        const req = store.get(item.id);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve(null);
+      });
+      // Handle old format (raw blob) vs new format ({ blob, transcript })
+      const blob = data instanceof Blob ? data : data?.blob || null;
+      const transcript = (data && !(data instanceof Blob) && data.transcript) ? data.transcript : '';
+      state.files.push({ ...item, blob, transcript });
+    }
+    renderFileList();
+  } catch(e) {}
+}
+
+// ===== History =====
+function saveMinute(title, markdown, templateId, fileId) {
+  const tpl = TEMPLATES.find(t => t.id === templateId);
+  const file = state.files.find(f => f.id === fileId);
+  const m = {
+    id: 'm_' + Date.now(),
+    title: title || (tpl ? tpl.name : '未命名纪要'),
+    markdown, templateId, fileId,
+    projectId: file ? file.projectId : null,
+    createdAt: new Date().toLocaleString('zh-CN'),
+  };
+  state.minutes.unshift(m);
+  state.currentMinuteId = m.id;
+
+  // Extract todos from markdown
+  extractTodosFromMarkdown(m);
+
+  persistMinutes();
+  renderHistoryList();
+  updateTodoBadge();
+  return m;
+}
+
+function extractTodosFromMarkdown(minute) {
+  const lines = minute.markdown.split('\n');
+  for (const line of lines) {
+    const match = line.match(/^[-*]\s*\[ \]\s+(.+)/);
+    if (match && match[1].trim()) {
+      // Avoid duplicates
+      if (!state.todos.some(t => t.text === match[1].trim() && t.minuteId === minute.id)) {
+        state.todos.push({
+          id: 't_' + Date.now() + '_' + Math.random().toString(36).slice(2,5),
+          text: match[1].trim(),
+          done: false,
+          minuteId: minute.id,
+          createdAt: new Date().toLocaleString('zh-CN'),
+        });
+      }
+    }
+  }
+  saveTodos();
+}
+
+function persistMinutes() {
+  try {
+    localStorage.setItem('notivo_minutes_meta', JSON.stringify(state.minutes.map(m => ({
+      id: m.id, title: m.title, templateId: m.templateId, fileId: m.fileId,
+      projectId: m.projectId, createdAt: m.createdAt,
+      preview: m.markdown.replace(/[#*|>\-\[\]`]/g, '').slice(0, 100),
+    }))));
+    // Store full markdown separately for size
+    const contents = {};
+    state.minutes.forEach(m => { contents[m.id] = m.markdown; });
+    localStorage.setItem('notivo_minutes_content', JSON.stringify(contents));
+  } catch(e) { /* storage full, keep in memory */ }
+}
+
+function loadMinutes() {
+  try {
+    const meta = localStorage.getItem('notivo_minutes_meta');
+    const content = localStorage.getItem('notivo_minutes_content');
+    if (!meta) return;
+    const items = JSON.parse(meta);
+    const contents = content ? JSON.parse(content) : {};
+    state.minutes = items.map(item => ({
+      ...item, markdown: contents[item.id] || '',
+    }));
+    renderHistoryList();
+    updateTodoBadge();
+  } catch(e) {}
+}
+
+function renderHistoryList() {
+  const list = document.getElementById('historyList');
+  const empty = document.getElementById('emptyHistory');
+  const search = document.getElementById('historySearch')?.value?.toLowerCase() || '';
+  const pid = state.selectedProjectId;
+
+  let filtered = state.minutes;
+  if (pid) filtered = filtered.filter(m => m.projectId === pid);
+  if (search) filtered = filtered.filter(m => m.title.toLowerCase().includes(search) || m.markdown.toLowerCase().includes(search));
+
+  if (filtered.length === 0) {
+    list.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+  list.innerHTML = filtered.map(m => {
+    const tpl = TEMPLATES.find(t => t.id === m.templateId);
+    const file = state.files.find(f => f.id === m.fileId);
+    const preview = m.markdown.replace(/[#*|>\-\[\]`]/g, '').slice(0, 100);
+    return `
+      <div class="history-card" onclick="openDetailModal('${m.id}')">
+        <div class="h-title">${esc(m.title)}</div>
+        <div class="h-preview">${esc(preview)}…</div>
+        <div class="h-meta">
+          <span class="history-tag tpl">${tpl ? tpl.icon + ' ' + tpl.name : '📄 未知'}</span>
+          <span>📅 ${m.createdAt}</span>
+          ${file ? `<span>🎵 ${esc(file.name.slice(0, 15))}</span>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function switchHistoryView(view) {
+  state.historyView = view;
+  document.getElementById('historyListView').style.display = view === 'list' ? '' : 'none';
+  document.getElementById('todosView').style.display = view === 'todos' ? '' : 'none';
+  document.getElementById('subNavList').classList.toggle('active', view === 'list');
+  document.getElementById('subNavTodos').classList.toggle('active', view === 'todos');
+  if (view === 'todos') renderTodos();
+  if (view === 'list') renderHistoryList();
+}
+
+// ===== Todos =====
+function renderTodos() {
+  const section = document.getElementById('todoSection');
+  const pid = state.selectedProjectId;
+  let todos = state.todos;
+  if (pid) {
+    const minuteIds = new Set(state.minutes.filter(m => m.projectId === pid).map(m => m.id));
+    todos = todos.filter(t => minuteIds.has(t.minuteId));
+  }
+  const pending = todos.filter(t => !t.done);
+  const done = todos.filter(t => t.done);
+  if (todos.length === 0) {
+    section.innerHTML = '<div class="empty-state"><span class="icon">✅</span><p>暂无待办事项</p></div>';
+    return;
+  }
+  const renderItem = (t) => `
+    <div class="todo-item${t.done ? ' done' : ''}" onclick="toggleTodo('${t.id}')">
+      <div class="todo-check${t.done ? ' done' : ''}">${t.done ? '✓' : ''}</div>
+      <span class="todo-text">${esc(t.text)}</span>
+      <button class="file-delete" onclick="deleteTodo('${t.id}', event)" style="font-size:12px;">✕</button>
+    </div>
+  `;
+  section.innerHTML = `
+    ${pending.length > 0 ? '<div class="section-title" style="font-size:13px;">📌 待完成 (' + pending.length + ')</div>' + pending.map(renderItem).join('') : ''}
+    ${done.length > 0 ? '<div class="section-title" style="font-size:13px;margin-top:12px;">✅ 已完成 (' + done.length + ')</div>' + done.map(renderItem).join('') : ''}
+  `;
+}
+
+function toggleTodo(id) {
+  const t = state.todos.find(t => t.id === id);
+  if (t) { t.done = !t.done; saveTodos(); renderTodos(); updateTodoBadge(); }
+}
+
+function addTodo() {
+  const input = document.getElementById('todoAddInput');
+  const text = input.value.trim();
+  if (!text) return;
+  state.todos.push({ id: 't_' + Date.now(), text, done: false, minuteId: null, createdAt: new Date().toLocaleString('zh-CN') });
+  input.value = '';
+  saveTodos();
+  renderTodos();
+  updateTodoBadge();
+}
+
+function deleteTodo(id, event) {
+  event.stopPropagation();
+  state.todos = state.todos.filter(t => t.id !== id);
+  saveTodos();
+  renderTodos();
+  updateTodoBadge();
+}
+
+function updateTodoBadge() {
+  const badge = document.getElementById('todoBadge');
+  const count = state.todos.filter(t => !t.done).length;
+  badge.textContent = count > 0 ? `(${count})` : '';
+}
+
+function saveTodos() {
+  localStorage.setItem('notivo_todos', JSON.stringify(state.todos));
+}
+
+function loadTodos() {
+  const saved = localStorage.getItem('notivo_todos');
+  if (saved) { try { state.todos = JSON.parse(saved); } catch(e) {} }
+  updateTodoBadge();
+}
+
+// ===== Detail Modal =====
+function openDetailModal(minuteId) {
+  const m = state.minutes.find(m => m.id === minuteId);
+  if (!m) return;
+  state.viewingMinuteId = minuteId;
+  document.getElementById('detailTitle').textContent = m.title;
+  document.getElementById('detailContent').innerHTML = marked.parse(m.markdown);
+  document.getElementById('detailMdBtn').onclick = () => downloadBlob(new Blob([m.markdown], {type:'text/markdown'}), 'notivo-纪要.md');
+  document.getElementById('detailModal').style.display = '';
+}
+
+function closeDetailModal() {
+  document.getElementById('detailModal').style.display = 'none';
+  state.viewingMinuteId = null;
+}
+
+function copyDetailContent() {
+  const m = state.minutes.find(m => m.id === state.viewingMinuteId);
+  if (!m) return;
+  navigator.clipboard.writeText(m.markdown).then(
+    () => toast('已复制到剪贴板', 'success'),
+    () => toast('复制失败', 'error')
+  );
+}
+
+function deleteDetailMinute() {
+  const m = state.minutes.find(m => m.id === state.viewingMinuteId);
+  if (!m) return;
+  state.minutes = state.minutes.filter(x => x.id !== m.id);
+  state.todos = state.todos.filter(t => t.minuteId !== m.id);
+  persistMinutes();
+  saveTodos();
+  renderHistoryList();
+  updateTodoBadge();
+  closeDetailModal();
+  toast('纪要已删除', 'info');
+}
+
+function detailToMindmap() {
+  const m = state.minutes.find(m => m.id === state.viewingMinuteId);
+  if (!m) return;
+  state.currentMarkdown = m.markdown;
+  closeDetailModal();
+  showMindmap();
+}
+
+// ===== Transcript Modal =====
+let editingTranscriptFileId = null;
+
+function openTranscriptModal(fileId, event) {
+  event.stopPropagation();
+  editingTranscriptFileId = fileId;
+  const file = state.files.find(f => f.id === fileId);
+  document.getElementById('transcriptTextarea').value = file?.transcript || '';
+  document.getElementById('transcriptModal').style.display = '';
+}
+
+function closeTranscriptModal() {
+  document.getElementById('transcriptModal').style.display = 'none';
+  editingTranscriptFileId = null;
+}
+
+function saveTranscript() {
+  const text = document.getElementById('transcriptTextarea').value;
+  const file = state.files.find(f => f.id === editingTranscriptFileId);
+  if (file) {
+    file.transcript = text;
+    saveFiles();
+    renderFileList();
+    toast(text.trim() ? '转写文本已保存 ✅' : '文本已清空', text.trim() ? 'success' : 'info');
+  }
+  closeTranscriptModal();
+}
+
+// ===== Projects =====
+function renderProjectBar() {
+  const bar = document.getElementById('projectBar');
+  const tags = state.projects.map(p => {
+    const active = state.selectedProjectId === p.id ? ' active' : '';
+    return `<button class="project-tag${active}" onclick="filterByProject('${p.id}')"><span class="project-color-dot" style="background:${p.color};"></span>${esc(p.name)}</button>`;
+  }).join('');
+  const allActive = state.selectedProjectId === null ? ' active' : '';
+  bar.innerHTML = `<button class="project-tag${allActive}" onclick="filterByProject(null)">全部</button>${tags}<button class="project-tag project-tag-add" onclick="addProject()" title="新建项目">+</button>`;
+}
+
+function filterByProject(projectId) {
+  state.selectedProjectId = projectId;
+  renderProjectBar();
+  renderFileList();
+  if (state.activeTab === 'history') renderHistoryList();
+}
+
+function addProject() {
+  const name = prompt('输入项目名称：');
+  if (!name || !name.trim()) return;
+  const colors = ['#4F46E5','#059669','#DC2626','#D97706','#7C3AED','#0891B2','#DB2777'];
+  const color = colors[state.projects.length % colors.length];
+  const p = { id: 'p_' + Date.now(), name: name.trim(), color, createdAt: new Date().toLocaleString('zh-CN') };
+  state.projects.push(p);
+  saveProjects();
+  renderProjectBar();
+  toast(`项目「${p.name}」已创建`, 'success');
+}
+
+function saveProjects() {
+  localStorage.setItem('notivo_projects', JSON.stringify(state.projects));
+}
+
+function loadProjects() {
+  const saved = localStorage.getItem('notivo_projects');
+  if (saved) {
+    try { state.projects = JSON.parse(saved); } catch(e) {}
+  }
+}
+
+// Update file object to include projectId
+function handleFiles(fileList) {
+  let added = 0;
+  const pid = state.selectedProjectId;
+  for (const file of fileList) {
+    if (!file.type.startsWith('audio/') && !file.name.match(/\.(mp3|wav|m4a|ogg|flac|aac|wma)$/i)) continue;
+    if (state.files.some(f => f.name === file.name && f.size === file.size)) continue;
+    const f = {
+      id: 'f_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
+      name: file.name, size: file.size, duration: null,
+      blob: file, addedAt: new Date().toLocaleString('zh-CN'),
+      transcript: '', projectId: pid,
+    };
+    state.files.push(f);
+    added++;
+    getAudioDuration(f);
+  }
+  if (added > 0) { saveFiles(); renderFileList(); renderFileDropdown(); toast(`已添加 ${added} 个文件`, 'success'); }
+}
+
+// ponytail: handleFiles is redefined above with projectId support
+
+function renderFileList() {
+  const list = document.getElementById('fileList');
+  const empty = document.getElementById('emptyFiles');
+  const filtered = state.selectedProjectId
+    ? state.files.filter(f => f.projectId === state.selectedProjectId)
+    : state.files;
+  if (filtered.length === 0) {
+    list.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  if (state.files.length === 0) {
+    list.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+  list.innerHTML = filtered.map(f => {
+    const dur = f.duration ? formatDuration(f.duration) : '--:--';
+    const size = formatSize(f.size);
+    const sel = state.selectedFileId === f.id ? ' selected' : '';
+    const hasTxt = f.transcript && f.transcript.trim();
+    const badge = hasTxt
+      ? '<span class="transcript-badge has">✓ 已附文本</span>'
+      : '<span class="transcript-badge none">无文本</span>';
+    return `
+      <div class="file-card${sel}" onclick="selectFile('${f.id}')">
+        <span class="file-icon">${f.blob ? '🎵' : '📎'}</span>
+        <div class="file-info">
+          <div class="file-name" title="${esc(f.name)}">${esc(f.name)}</div>
+          <div class="file-meta">${dur} · ${size} · ${f.addedAt}</div>
+          <div style="margin-top:4px;">${badge}</div>
+        </div>
+        <button class="file-delete" onclick="openTranscriptModal('${f.id}', event)" title="粘贴转写文本" style="right:44px;">📝</button>
+        <button class="file-delete" onclick="deleteFile('${f.id}', event)" title="删除">✕</button>
+      </div>
+    `;
+  }).join('');
+}
+
+// ===== Selectors: File / Model / Template =====
+
+// --- File selector ---
+function renderFileDropdown() {
+  const dd = document.getElementById('fileDropdown');
+  if (!dd) return;
+  if (state.files.length === 0) {
+    dd.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-secondary);font-size:13px;">暂无录音文件，请先在「文件」页上传</div>';
+    return;
+  }
+  dd.innerHTML = state.files.map(f => {
+    const sel = state.selectedFileId === f.id ? ' selected' : '';
+    const dur = f.duration ? formatDuration(f.duration) : '--:--';
+    const hasTxt = f.transcript && f.transcript.trim() ? ' · ✓已附文本' : '';
+    return `
+      <div class="file-option${sel}" onclick="selectFileFromDropdown('${f.id}')">
+        <span class="fo-icon">🎵</span>
+        <div class="fo-info">
+          <div class="fo-name">${esc(f.name)}</div>
+          <div class="fo-meta">${dur} · ${formatSize(f.size)}${hasTxt}</div>
+        </div>
+        <span class="fo-check">${sel ? '✓' : ''}</span>
+      </div>
+    `;
+  }).join('');
+  updateFilePillDisplay();
+}
+
+function selectFileFromDropdown(id) {
+  state.selectedFileId = id;
+  state.currentMarkdown = '';
+  resetChat();
+  document.getElementById('previewPanel').style.display = 'none';
+  document.getElementById('noFileWarning').style.display = 'none';
+  renderFileDropdown();
+  renderFileList();
+  updateFilePillDisplay();
+  closeAllSelectors();
+}
+
+function updateFilePillDisplay() {
+  const f = state.files.find(f => f.id === state.selectedFileId);
+  const el = document.getElementById('selectedFileName');
+  if (el) el.textContent = f ? f.name.slice(0, 12) : '录音文件';
+}
+
+// --- Model selector ---
+function renderModelSelector() {
+  const dd = document.getElementById('modelDropdown');
+  if (!dd) return;
+  const opts = MODEL_OPTIONS[state.settings.provider] || MODEL_OPTIONS.anthropic;
+  const currentModel = state.settings.model || opts[0]?.id;
+  dd.innerHTML = opts.map(m => `
+    <div class="model-option${m.id === currentModel ? ' selected' : ''}" onclick="selectModel('${m.id}')">
+      <span class="mo-check">${m.id === currentModel ? '✓' : ''}</span>
+      ${m.name}
+    </div>
+  `).join('');
+  updateModelDisplay();
+}
+
+function selectModel(modelId) {
+  state.settings.model = modelId;
+  document.getElementById('settingModel').value = modelId;
+  saveSettings();
+  renderModelSelector();
+  closeAllSelectors();
+}
+
+function updateModelDisplay() {
+  const opts = MODEL_OPTIONS[state.settings.provider] || MODEL_OPTIONS.anthropic;
+  const m = opts.find(o => o.id === state.settings.model);
+  const el = document.getElementById('selectedModelName');
+  if (el) el.textContent = m ? m.name : '未选择';
+}
+
+// --- Template selector ---
+function renderTemplates() {
+  const dd = document.getElementById('templateDropdown');
+  if (!dd) return;
+  const defId = TEMPLATES[0].id;
+  if (!state.selectedTemplate) state.selectedTemplate = defId;
+  dd.innerHTML = `<div class="template-mini-grid">${TEMPLATES.map(t => {
+    const sel = state.selectedTemplate === t.id ? ' selected' : '';
+    return `
+      <div class="template-mini-card${sel}" onclick="selectTemplate('${t.id}')">
+        <div class="tm-icon">${t.icon}</div>
+        <div class="tm-name">${t.name}</div>
+        <div class="tm-desc">${t.desc}</div>
+      </div>
+    `;
+  }).join('')}</div>`;
+  updateTemplateDisplay();
+}
+
+function selectTemplate(id) {
+  state.selectedTemplate = id;
+  renderTemplates();
+  closeAllSelectors();
+}
+
+function updateTemplateDisplay() {
+  const t = TEMPLATES.find(t => t.id === state.selectedTemplate);
+  const el = document.getElementById('selectedTemplateName');
+  if (el) el.textContent = t ? t.icon + ' ' + t.name : '未选择';
+}
+
+// --- Toggle ---
+function toggleSelector(type) {
+  const dd = document.getElementById(type + 'Dropdown');
+  const arrow = document.getElementById(type + 'Arrow');
+  const pill = document.getElementById('pill' + (type === 'file' ? 'File' : type === 'model' ? 'Model' : 'Template'));
+  const isOpen = dd && dd.classList.contains('open');
+
+  // Close all
+  closeAllSelectors();
+
+  if (!isOpen && dd) {
+    dd.classList.add('open');
+    if (arrow) arrow.classList.add('open');
+    if (pill) pill.classList.add('open');
+  }
+}
+
+function closeAllSelectors() {
+  document.querySelectorAll('.selector-drop-panel').forEach(d => d.classList.remove('open'));
+  document.querySelectorAll('.sp-arrow').forEach(a => a.classList.remove('open'));
+  document.querySelectorAll('.selector-pill').forEach(p => p.classList.remove('open'));
+}
+
+function resetChat() {
+  document.getElementById('chatMessages').innerHTML = `<div class="empty-state" id="chatEmpty" style="padding:20px;">
+    <span class="icon">✨</span>
+    <p>在下方选择模型和模板，发送消息开始生成纪要</p>
+  </div>`;
+  document.getElementById('previewPanel').style.display = 'none';
+  document.getElementById('previewContent').innerHTML = '';
+  state.currentMarkdown = '';
+}
+
+// ===== Backend API (ponytail: single source of truth for AI calls) =====
+
+// ponytail: backend-backed — uploads file to Notivo server which proxies Whisper
+async function callWhisperAPI(audioBlob) {
+  const formData = new FormData();
+  formData.append('file', audioBlob, 'recording.' + (audioBlob.type.includes('mp3') ? 'mp3' : audioBlob.type.includes('wav') ? 'wav' : 'm4a'));
+
+  const resp = await fetch(`${API_BASE}/api/transcribe`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`转录失败: ${resp.status} ${err}`);
+  }
+  const result = await resp.json();
+  // Store backend file_id for later generate calls
+  return { text: result.text, backendId: result.file_id };
+}
+
+// ponytail: backend-backed — SSE streaming via Notivo server
+async function streamGenerate(templateId, fileId, userInstruction) {
+  const resp = await fetch(`${API_BASE}/api/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ template_id: templateId, file_id: fileId, user_instruction: userInstruction || '' }),
+  });
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`生成失败: ${resp.status} ${err}`);
+  }
+  return resp;
+}
+
+async function streamChat(messages, systemPrompt) {
+  const resp = await fetch(`${API_BASE}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages, system_prompt: systemPrompt }),
+  });
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`对话失败: ${resp.status} ${err}`);
+  }
+  return resp;
+}
+
+function parseSSEChunk(data) {
+  // Notivo backend sends: data: {"text": "..."}
+  // or: data: {"done": true, "minute_id": "...", "title": "..."}
+  // or: data: {"error": "..."}
+  if (data.error) throw new Error(data.error);
+  if (data.done) return { done: true, minuteId: data.minute_id, title: data.title };
+  return { text: data.text || '' };
+}
+
+async function readStream(response, onChunk, onDone, onError) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) { onDone(); break; }
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data: ')) continue;
+        try {
+          const data = JSON.parse(trimmed.slice(6));
+          const result = parseSSEChunk(data);
+          if (result.done) {
+            onDone(result);
+            return;
+          }
+          if (result.text) onChunk(result.text);
+        } catch(e) { /* skip malformed */ }
+      }
+    }
+  } catch(e) {
+    onError(e);
+  }
+}
+
+// ===== Chat & Generation =====
+async function autoGenerate(userInstruction) {
+  if (!state.selectedTemplate || !state.selectedFileId) return;
+
+  const template = TEMPLATES.find(t => t.id === state.selectedTemplate);
+  const file = state.files.find(f => f.id === state.selectedFileId);
+  if (!template || !file) return;
+
+  const chatMessages = document.getElementById('chatMessages');
+
+  try {
+    const chatEmpty = document.getElementById('chatEmpty');
+    if (chatEmpty) chatEmpty.style.display = 'none';
+
+    // Step 1: Ensure file is uploaded to backend and transcribed
+    let backendId = file.backendId;
+    if (file.transcript && file.transcript.trim()) {
+      // Has pre-existing transcript (Xiaomi) — need to upload to backend first
+      if (!backendId && file.blob) {
+        addChatMessage('ai', '📤 正在上传录音到服务器…', true);
+        const result = await callWhisperAPI(file.blob);
+        backendId = result.backendId;
+        file.backendId = backendId;
+        // Override backend transcript with Xiaomi's version
+        file.transcript = file.transcript; // keep it
+        saveFiles();
+        chatMessages.lastChild?.remove();
+        addChatMessage('ai', '📝 使用已导入的小米录音机转写文本，跳过语音转录。', false);
+      } else if (!backendId) {
+        addChatMessage('ai', `⚠️ 文件 "${file.name}" 的音频数据不可用。请重新上传文件。`, false);
+        return;
+      }
+    } else if (file.blob) {
+      addChatMessage('ai', '🎙️ 正在上传并转录音频…', true);
+      const processingBar = showProcessing('上传并转录音频中…');
+      const result = await callWhisperAPI(file.blob);
+      backendId = result.backendId;
+      file.backendId = backendId;
+      file.transcript = result.text;
+      saveFiles();
+      chatMessages.lastChild?.remove();
+      if (processingBar) processingBar.remove();
+      addChatMessage('ai', `📝 **转录完成**\n\n${result.text.slice(0, 200)}${result.text.length > 200 ? '…' : ''}`, false);
+    } else {
+      addChatMessage('ai', `⚠️ 文件 "${file.name}" 的音频数据不可用。请点击文件卡片上的 📝 按钮粘贴小米录音机的转写文本，或重新上传文件。`, false);
+      return;
+    }
+
+    // Step 2: Generate minutes via backend SSE
+    addChatMessage('ai', '✨ 正在生成纪要…', true);
+    const genBar = showProcessing('生成纪要中…');
+    const resp = await streamGenerate(state.selectedTemplate, backendId, userInstruction || '');
+
+    chatMessages.lastChild?.remove();
+    const aiMsg = addChatMessage('ai', '', false);
+    aiMsg.classList.add('streaming');
+    state.currentMarkdown = '';
+
+    if (genBar) genBar.remove();
+    showPreview();
+
+    await readStream(resp,
+      (text) => {
+        state.currentMarkdown += text;
+        aiMsg.innerHTML = marked.parse(state.currentMarkdown);
+        updatePreview();
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      },
+      (doneResult) => {
+        aiMsg.classList.remove('streaming');
+        updatePreview();
+        document.getElementById('wordCount').textContent = `约 ${countWords(state.currentMarkdown)} 字`;
+        const tpl = TEMPLATES.find(t => t.id === state.selectedTemplate);
+        const title = doneResult?.title || (tpl ? tpl.name : '会议纪要');
+        saveMinute(title, state.currentMarkdown, state.selectedTemplate, state.selectedFileId);
+        toast('纪要已生成并保存 ✅', 'success');
+      },
+      (err) => {
+        aiMsg.classList.remove('streaming');
+        aiMsg.innerHTML = `❌ 错误: ${esc(err.message)}`;
+        document.getElementById('wordCount').textContent = '';
+        toast('生成失败: ' + err.message, 'error');
+      }
+    );
+  } catch(err) {
+    document.getElementById('chatMessages').lastChild?.remove();
+    addChatMessage('ai', `❌ 错误: ${esc(err.message)}`, false);
+    toast(err.message, 'error');
+  }
+}
+
+function addChatMessage(role, content, isStreaming) {
+  const container = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = `chat-msg ${role}${isStreaming ? ' streaming' : ''}`;
+  if (role === 'ai' && content) {
+    div.innerHTML = marked.parse(content);
+  } else {
+    div.textContent = content;
+  }
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  return div;
+}
+
+async function sendMessage() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  const isFirstMessage = !state.currentMarkdown;
+
+  if (isFirstMessage) {
+    // First message: auto-generate using selected template + file
+    if (!state.selectedFileId) {
+      toast('请先在「文件」页上传并选中一个录音文件', 'info');
+      return;
+    }
+    if (!state.selectedTemplate) {
+      state.selectedTemplate = TEMPLATES[0].id;
+      updateTemplateDisplay();
+    }
+    input.value = '';
+    document.getElementById('chatEmpty').style.display = 'none';
+    // Use user text as additional instruction, or default prompt
+    if (text) {
+      addChatMessage('user', text, false);
+    }
+    await autoGenerate(text || null);
+    return;
+  }
+
+  // Follow-up message — via backend /api/chat
+  if (!text) return;
+  input.value = '';
+  addChatMessage('user', text, false);
+  addChatMessage('ai', '…', true);
+  const genBar = showProcessing('处理中…');
+
+  try {
+    const template = TEMPLATES.find(t => t.id === state.selectedTemplate);
+    const systemPrompt = template
+      ? `你是会议纪要助手。用户正在修改或追问关于会议纪要的内容。根据用户指令修改/补充。使用Markdown格式。`
+      : '你是会议纪要助手。使用Markdown格式回复。';
+    const msgs = [
+      { role: 'user', content: `已生成的纪要：\n\n${state.currentMarkdown.slice(0, 2000)}\n\n用户指令：${text}` },
+    ];
+
+    const resp = await streamChat(msgs, systemPrompt);
+
+    const container = document.getElementById('chatMessages');
+    container.lastChild?.remove();
+    const aiMsg = addChatMessage('ai', '', false);
+    aiMsg.classList.add('streaming');
+    let full = '';
+    if (genBar) genBar.remove();
+
+    await readStream(resp,
+      (text) => {
+        full += text;
+        aiMsg.innerHTML = marked.parse(full);
+        container.scrollTop = container.scrollHeight;
+      },
+      () => {
+        aiMsg.classList.remove('streaming');
+        state.currentMarkdown = full;
+        updatePreview();
+        document.getElementById('wordCount').textContent = `约 ${countWords(full)} 字`;
+        saveMinute('追问回复', full, state.selectedTemplate, state.selectedFileId);
+      },
+      (err) => {
+        aiMsg.classList.remove('streaming');
+        aiMsg.innerHTML = `❌ ${esc(err.message)}`;
+      }
+    );
+  } catch(err) {
+    if (genBar) genBar.remove();
+    document.getElementById('chatMessages').lastChild?.remove();
+    addChatMessage('ai', `❌ ${esc(err.message)}`, false);
+    toast(err.message, 'error');
+  }
+}
+
+function setupChatInput() {
+  const input = document.getElementById('chatInput');
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+}
+
+// ===== Preview =====
+function showPreview() {
+  document.getElementById('previewPanel').style.display = '';
+  document.getElementById('previewContent').innerHTML = '';
+}
+
+function updatePreview() {
+  document.getElementById('previewContent').innerHTML = marked.parse(state.currentMarkdown);
+}
+
+// ===== Mind Map =====
+function showMindmap() {
+  if (!state.currentMarkdown) {
+    toast('请先生成会议纪要', 'info');
+    return;
+  }
+  switchTab('mindmap');
+  setTimeout(renderMindmap, 200);
+}
+
+let markmapInstance = null;
+
+function renderMindmap() {
+  const svg = document.getElementById('mindmapContainer');
+  const empty = document.getElementById('emptyMindmap');
+  const actions = document.getElementById('mindmapActions');
+  const wrapper = document.getElementById('mindmapWrapper');
+
+  if (!state.currentMarkdown) {
+    svg.style.display = 'none';
+    empty.style.display = '';
+    actions.style.display = 'none';
+    if (markmapInstance) { markmapInstance.destroy(); markmapInstance = null; }
+    return;
+  }
+
+  empty.style.display = 'none';
+  svg.style.display = '';
+  actions.style.display = 'flex';
+
+  // Resize SVG to fill wrapper
+  const rect = wrapper.getBoundingClientRect();
+  svg.setAttribute('width', rect.width);
+  svg.setAttribute('height', Math.max(rect.height, 400));
+
+  try {
+    if (markmapInstance) markmapInstance.destroy();
+
+    if (!window.markmap) throw new Error('markmap 库未加载');
+    const { Markmap, Transformer, loadCSS, loadJS } = window.markmap;
+    const transformer = new Transformer();
+    const { root, features } = transformer.transform(state.currentMarkdown);
+    const { styles, scripts } = transformer.getUsedAssets(features);
+
+    // Load any extra assets the markdown needs
+    if (styles) loadCSS(styles);
+    if (scripts) loadJS(scripts, { getMarkmap: () => window.markmap });
+
+    markmapInstance = Markmap.create(svg, null, root);
+    markmapInstance.fit();
+  } catch(e) {
+    console.error('Mindmap error:', e);
+    svg.style.display = 'none';
+    empty.style.display = '';
+    empty.innerHTML = `<span class="icon">⚠️</span><p>思维导图渲染失败: ${esc(e.message)}</p>`;
+    actions.style.display = 'none';
+  }
+}
+
+function exportMindmapSVG() {
+  if (!markmapInstance) { toast('请先生成思维导图', 'info'); return; }
+  const svg = document.getElementById('mindmapContainer');
+  if (!svg) return;
+  const clone = svg.cloneNode(true);
+  const data = new XMLSerializer().serializeToString(clone);
+  downloadBlob(new Blob([data], {type:'image/svg+xml'}), 'notivo-mindmap.svg');
+  toast('SVG 已下载', 'success');
+}
+
+function exportMindmapPNG() {
+  if (!markmapInstance) { toast('请先生成思维导图', 'info'); return; }
+  const svg = document.getElementById('mindmapContainer');
+  if (!svg) return;
+  const clone = svg.cloneNode(true);
+  const data = new XMLSerializer().serializeToString(clone);
+  const canvas = document.createElement('canvas');
+  const rect = svg.getBoundingClientRect();
+  canvas.width = rect.width * 2;
+  canvas.height = rect.height * 2;
+  const ctx = canvas.getContext('2d');
+  const img = new Image();
+  img.onload = () => {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0);
+    canvas.toBlob(blob => {
+      downloadBlob(blob, 'notivo-mindmap.png');
+      toast('PNG 已下载', 'success');
+    });
+  };
+  img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(data)));
+}
+
+// ===== Export =====
+function copyContent() {
+  if (!state.currentMarkdown) return;
+  navigator.clipboard.writeText(state.currentMarkdown).then(
+    () => toast('已复制到剪贴板', 'success'),
+    () => toast('复制失败', 'error')
+  );
+}
+
+function downloadMD() {
+  if (!state.currentMarkdown) return;
+  downloadBlob(new Blob([state.currentMarkdown], {type:'text/markdown'}), 'notivo-纪要.md');
+  toast('Markdown 已下载', 'success');
+}
+
+// ===== Connection Test =====
+async function testConnection() {
+  const dot = document.getElementById('apiStatusDot');
+  const text = document.getElementById('apiStatusText');
+  const text2 = document.getElementById('apiStatusText2');
+  if (dot) dot.className = 'api-status unknown';
+  if (text) text.textContent = '检测中…';
+  if (text2) text2.textContent = '检测中…';
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/health`);
+    const result = await resp.json();
+    if (result.ok) {
+      if (dot) dot.className = 'api-status ok';
+      const msg = result.has_api_key ? '服务正常 ✅' : '服务正常 ⚠️ 未配置 API Key';
+      if (text) text.textContent = msg;
+      if (text2) text2.textContent = msg;
+      toast(result.has_api_key ? '后端连接正常' : '后端运行中，请设置 API Key', 'success');
+    } else {
+      if (dot) dot.className = 'api-status unknown';
+      if (text) text.textContent = '异常';
+      if (text2) text2.textContent = '异常';
+      toast('后端异常', 'error');
+    }
+  } catch(e) {
+    if (dot) dot.className = 'api-status unknown';
+    const msg = '无法连接';
+    if (text) text.textContent = msg;
+    if (text2) text2.textContent = msg;
+    toast('无法连接后端: ' + e.message, 'error');
+  }
+}
+
+// ===== 我 page =====
+function showMeSub(view) {
+  state.meSubView = view;
+  document.getElementById('meMainView').style.display = view === 'main' ? '' : 'none';
+  document.getElementById('meApiView').style.display = view === 'api' ? '' : 'none';
+  document.getElementById('meGlossaryView').style.display = view === 'glossary' ? '' : 'none';
+  if (view === 'api') {
+    document.getElementById('settingProvider').value = state.settings.provider;
+    document.getElementById('settingApiKey').value = state.settings.apiKey;
+    document.getElementById('settingBaseUrl').value = state.settings.baseUrl || '';
+    document.getElementById('settingWhisperKey').value = state.settings.whisperKey || '';
+    onProviderChange();
+    updateModelSelect();
+  }
+  if (view === 'glossary') {
+    renderGlossaryWords();
+    renderIndustryTags();
+  }
+}
+
+function switchGlossaryTab(tab) {
+  state.glossaryTab = tab;
+  document.getElementById('glossaryMyView').style.display = tab === 'my' ? '' : 'none';
+  document.getElementById('glossaryIndustryView').style.display = tab === 'industry' ? '' : 'none';
+  document.getElementById('glossaryTabMy').classList.toggle('active', tab === 'my');
+  document.getElementById('glossaryTabInd').classList.toggle('active', tab === 'industry');
+}
+
+function addGlossaryWord() {
+  const input = document.getElementById('glossaryAddInput');
+  const word = input.value.trim();
+  if (!word) return;
+  if (state.glossary.words.includes(word)) { toast('该词汇已存在', 'info'); return; }
+  state.glossary.words.push(word);
+  input.value = '';
+  saveGlossary();
+  renderGlossaryWords();
+}
+
+function removeGlossaryWord(word) {
+  state.glossary.words = state.glossary.words.filter(w => w !== word);
+  saveGlossary();
+  renderGlossaryWords();
+}
+
+function renderGlossaryWords() {
+  const el = document.getElementById('glossaryWordList');
+  const words = state.glossary.words;
+  if (words.length === 0) {
+    el.innerHTML = '<div class="empty-state" style="padding:20px;"><span class="icon">📝</span><p>还没有添加词汇</p></div>';
+    return;
+  }
+  el.innerHTML = words.map(w => `
+    <span class="glossary-word">${esc(w)}<span class="gw-del" onclick="removeGlossaryWord('${esc(w)}')">×</span></span>
+  `).join('');
+}
+
+function selectIndustry(industry) {
+  state.glossary.industry = state.glossary.industry === industry ? null : industry;
+  saveGlossary();
+  renderIndustryTags();
+}
+
+function renderIndustryTags() {
+  const el = document.getElementById('industryTags');
+  const industries = ['科技互联网', '金融投资', '医疗健康', '能源环保', '教育培训', '法律合规', '制造业', '零售电商'];
+  el.innerHTML = industries.map(ind => {
+    const sel = state.glossary.industry === ind ? ' selected' : '';
+    return `<span class="industry-tag${sel}" onclick="selectIndustry('${ind}')">${ind}</span>`;
+  }).join('');
+}
+
+function saveGlossary() {
+  localStorage.setItem('notivo_glossary', JSON.stringify(state.glossary));
+}
+
+function loadGlossary() {
+  const saved = localStorage.getItem('notivo_glossary');
+  if (saved) { try { state.glossary = JSON.parse(saved); } catch(e) {} }
+}
+
+// ===== Tab Navigation =====
+function switchTab(tab) {
+  // Backward compat: 'settings' → 'me'
+  if (tab === 'settings') tab = 'me';
+  state.activeTab = tab;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const pageEl = document.getElementById('page-' + tab);
+  if (pageEl) pageEl.classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const navBtn = document.querySelector(`[data-tab="${tab}"]`);
+  if (navBtn) navBtn.classList.add('active');
+  document.getElementById('mainContent').scrollTop = 0;
+
+  if (tab === 'minutes') {
+    const hasFile = !!state.selectedFileId;
+    document.getElementById('noFileWarning').style.display = hasFile ? 'none' : '';
+    if (!state.selectedTemplate) {
+      state.selectedTemplate = TEMPLATES[0].id;
+      updateTemplateDisplay();
+    }
+    renderFileDropdown();
+    renderTemplates();
+    renderModelSelector();
+  }
+  if (tab === 'history') {
+    renderHistoryList();
+    updateTodoBadge();
+  }
+  if (tab === 'mindmap') {
+    if (state.currentMarkdown) {
+      setTimeout(renderMindmap, 200);
+    }
+  }
+  if (tab === 'me') {
+    showMeSub('main');
+    updateModelSelect();
+  }
+}
+
+// ===== Utility =====
+function showProcessing(text) {
+  const bar = document.createElement('div');
+  bar.className = 'processing-bar';
+  bar.innerHTML = `<div class="spinner"></div>${text}`;
+  const messages = document.getElementById('chatMessages');
+  messages.parentNode.insertBefore(bar, messages);
+  return bar;
+}
+
+function toast(message, type) {
+  const container = document.getElementById('toastContainer');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = message;
+  container.appendChild(el);
+  setTimeout(() => { el.remove(); }, 2500);
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+function formatDuration(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function countWords(text) {
+  // Chinese character count + English word count
+  const cn = (text.match(/[一-鿿]/g) || []).length;
+  const en = (text.match(/[a-zA-Z]+/g) || []).length;
+  return cn + en;
+}
+
+function esc(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+// ===== Boot =====
+init();
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js');
+}
+</script>
+</body>
+</html>
