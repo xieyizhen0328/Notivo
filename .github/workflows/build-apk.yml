@@ -25,10 +25,9 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-
-      - name: Install SDK Platform 35
-        run: |
-          yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-35" "build-tools;35.0.0" --sdk_root=${ANDROID_SDK_ROOT}
+        with:
+          api-level: 35
+          build-tools: 35.0.0
 
       - name: Install npm dependencies
         run: npm ci
@@ -41,9 +40,10 @@ jobs:
 
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: notivo-debug
