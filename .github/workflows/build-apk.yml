@@ -22,11 +22,11 @@ jobs:
 
       - name: Setup Android SDK
         run: |
-          yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-35" "build-tools;35.0.0" 2>&1 || true
-          echo "SDK setup done"
+          SDKMANAGER="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
+          yes | $SDKMANAGER --licenses
+          yes | $SDKMANAGER "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - run: npm ci
-
       - run: npx cap sync android
 
       - name: Build APK
@@ -34,7 +34,6 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
-          echo "=== APK files found ==="
           find . -name "*.apk" -type f
 
       - uses: actions/upload-artifact@v4
