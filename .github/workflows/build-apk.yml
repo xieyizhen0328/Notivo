@@ -1,8 +1,6 @@
 name: Build APK
 
 on:
-  push:
-    branches: [main, master]
   workflow_dispatch:
 
 jobs:
@@ -10,42 +8,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
+        with: { node-version: 22 }
       - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
+        with: { distribution: temurin, java-version: 17 }
 
-      - name: Setup Android SDK
+      - name: List available SDK packages
         run: |
           SDKMANAGER="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
-          yes | $SDKMANAGER --licenses
+          $SDKMANAGER --list 2>/dev/null | grep -E "platforms;android-3[0-9]|build-tools;3[0-9]" | head -20
+          echo "--- Installing ---"
+          yes | $SDKMANAGER --licenses 2>/dev/null
           yes | $SDKMANAGER "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - run: npm ci
       - run: npx cap sync android
 
-      - name: Build APK
+      - name: Build
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon 2>&1 | tee build.log
-          echo "exit code: $?"
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: build-log
-          path: android/build.log
-
-      - name: Upload APK
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: notivo-debug
+          name: apk-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
