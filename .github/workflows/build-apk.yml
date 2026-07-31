@@ -15,13 +15,10 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
 
-      - name: List available SDK packages
+      - name: Setup Android SDK
         run: |
-          SDKMANAGER="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
-          $SDKMANAGER --list 2>/dev/null | grep -E "platforms;android-3[0-9]|build-tools;3[0-9]" | head -20
-          echo "--- Installing ---"
-          yes | $SDKMANAGER --licenses 2>/dev/null
-          yes | $SDKMANAGER "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --licenses
+          yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - run: npm ci
       - run: npx cap sync android
